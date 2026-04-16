@@ -22,7 +22,7 @@ json
     "processed_at": "2026-04-16T12:00:00Z"
   }
 }
-Use code with caution.
+
 Confidence Logic:
 is_confident is true only if probability >= 0.7 AND sample_size >= 100.
 Error Handling:
@@ -42,7 +42,6 @@ git clone git@github.com:jalopy01/stage-zero-task.git
 
 # Install dependencies
 npm install
-Use code with caution.
 Running the App
 bash
 # development
@@ -53,9 +52,9 @@ npm run start:dev
 
 # production mode
 npm run start:prod
-Use code with caution.
+
 Technologies Used
 Framework: NestJS (TypeScript)
 HTTP Client: Axios
-Deployment: 
+Deployment: https://stage-zero-task-gamma.vercel.app/api/classify?name=john
 Author: Nnubia Obinna
