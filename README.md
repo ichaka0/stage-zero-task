@@ -47,22 +47,7 @@ Success response:
     "created_at": "2026-04-23T12:00:00.000Z"
   }
 }
-## Natural Language Parsing Approach
-The `/api/profiles/search` endpoint utilizes a rule-based Regex parsing engine to translate human-readable string queries into structured SQL `WHERE` clauses without the overhead of an LLM.
-
-**How it works:**
-1. **Sanitization:** The input string is normalized to lowercase to ensure case-insensitive matching.
-2. **Token Extraction via RegEx:** The engine scans for specific syntax patterns:
-   - **Gender:** Matches exact whole words (`\b(male|males|female...)\b`). It includes a cancellation check (if a query says "male and female", it drops the gender filter entirely to match both).
-   - **Age Groups:** Matches lifecycle keywords (`teenagers`, `adults`) mapping to their respective `age_group` strings.
-   - **Static Modifiers:** The keyword `young` translates into bounding logic: `min_age=16` and `max_age=24`.
-   - **Relational Age Modifiers:** Captures numbers following comparative operators (e.g., `above (\d+)`, `under (\d+)`) to dynamically generate `min_age` and `max_age`.
-   - **Geographic Data:** Extracts strings matching specific country names mapped to a static dictionary for ISO codes.
-
-**Limitations and Edge Cases Left Out:**
-- **Compound Modifiers:** The parser handles intersections (AND logic). Complex union queries (OR logic) are not supported.
-- **Typo Tolerance:** As a strict rule-based regex engine, it lacks fuzzy matching. "Nigera" will fail to parse and return an "Unable to interpret query" error.
-- **Extensive Geographic Mapping:** The country resolution relies on a hardcoded mapping dictionary limited to known seed database countries.```
+```
 
 ### `GET /api/profiles`
 
@@ -132,6 +117,50 @@ If the query cannot be interpreted, the API returns:
   "message": "Unable to interpret query"
 }
 ```
+
+## Natural Language Parsing
+
+The `/api/profiles/search` endpoint uses a simple rule-based parser in [src/profile/profile.service.ts](/Users/nnubiaobinna/Downloads/stage-zero-task/src/profile/profile.service.ts:182). It is intentionally deterministic: the incoming `q` string is lowercased, matched against known keywords with regex and substring checks, converted into filter fields, and then passed into the same filtering pipeline used by `GET /api/profiles`.
+
+### Supported Keywords And Mapping
+
+- Gender keywords: `male`, `males`, `men`, `boy`, `boys` map to `gender=male`
+- Gender keywords: `female`, `females`, `women`, `girl`, `girls` map to `gender=female`
+- If both male and female terms appear in the same query, no `gender` filter is added so both can match
+- `young` maps to `min_age=13` and `max_age=25`
+- `teenager`, `teenagers`, `teens` map to `min_age=13` and `max_age=19`
+- `adult`, `adults` map to `min_age=18` and `max_age=59`
+- `child`, `children`, `kid`, `kids` map to `max_age=12`
+- `senior`, `seniors`, `elderly` map to `min_age=60`
+- `above 30`, `over 30`, `older than 30` map to `min_age=31`
+- `under 18`, `below 18`, `younger than 18` map to `max_age=17`
+- Country phrases like `from nigeria`, `in kenya`, or the bare country name map to ISO country filters such as `country_id=NG` and `country_id=KE`
+
+### How The Logic Works
+
+1. The parser normalizes the query to lowercase.
+2. It scans for gender words and applies a gender filter only when one side is clearly requested.
+3. It scans for age-band words like `young`, `teenagers`, and `adult`, which become numeric age filters.
+4. It scans for comparison phrases like `above X` and `under X`, which override or narrow the age range.
+5. It scans for supported country names and converts them to ISO country codes.
+6. The parsed filters are forwarded into `getFilteredProfiles()`, so natural-language search reuses the same SQL filtering, sorting, and pagination behavior as the standard query-parameter endpoint.
+
+Examples:
+
+- `young males` becomes `gender=male`, `min_age=13`, `max_age=25`
+- `females above 30` becomes `gender=female`, `min_age=31`
+- `adult males from kenya` becomes `gender=male`, `min_age=18`, `max_age=59`, `country_id=KE`
+- `male and female teenagers above 17` becomes `min_age=18`, `max_age=19`
+
+## Limitations
+
+- The parser is rule-based, not semantic. It does not understand arbitrary phrasing outside the supported patterns.
+- It does not do fuzzy matching or typo correction. Queries like `nigeira` will not resolve to `NG`.
+- Country support is limited to the hardcoded country names in the service: `nigeria`, `kenya`, `angola`, `tanzania`, `uganda`, and `sudan`.
+- It only supports intersection-style filtering. It does not support explicit `OR` logic such as “males or seniors from kenya”.
+- It does not support advanced comparative language like “around 30”, “between 20 and 25”, “at least 18”, or “not from nigeria”.
+- When both male and female words appear together, the parser intentionally drops the gender filter rather than trying to build a multi-value gender condition.
+- If the final age bounds become contradictory, such as a minimum age greater than the maximum age, the request is rejected with `400 Unable to interpret query`.
 
 ### `GET /api/profiles/:id`
 
