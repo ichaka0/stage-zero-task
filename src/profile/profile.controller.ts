@@ -69,26 +69,43 @@ export class ProfileController {
     return this.profilesService.getFilteredProfiles(query);
   }
 
+  // @Get('search')
+  // async searchByNLP(@Query('q') q: string, @Query('page') page: string, @Query('limit') limit: string) {
+  //   if (!q) {
+  //     throw new HttpException({ status: 'error', message: 'Missing or empty parameter' }, HttpStatus.BAD_REQUEST);
+  //   }
+
+  //   try {
+  //     // 1. Parse the plain English string into a structured query object
+  //     const parsedFilters = this.profilesService.parseNaturalLanguage(q);
+      
+  //     // 2. Attach pagination
+  //     parsedFilters.page = page;
+  //     parsedFilters.limit = limit;
+
+  //     // 3. Re-use the existing high-performance query builder
+  //     return await this.profilesService.getFilteredProfiles(parsedFilters);
+      
+  //   } catch (error) {
+  //     if (error instanceof HttpException) throw error;
+  //     throw new HttpException({ status: 'error', message: 'Server failure' }, HttpStatus.INTERNAL_SERVER_ERROR);
+  //   }
+  // }
+
   @Get('search')
-  async searchByNLP(@Query('q') q: string, @Query('page') page: string, @Query('limit') limit: string) {
-    if (!q) {
+  async searchByNLP(@Query() query: any) {
+    if (!query.q) {
       throw new HttpException({ status: 'error', message: 'Missing or empty parameter' }, HttpStatus.BAD_REQUEST);
     }
 
-    try {
-      // 1. Parse the plain English string into a structured query object
-      const parsedFilters = this.profilesService.parseNaturalLanguage(q);
-      
-      // 2. Attach pagination
-      parsedFilters.page = page;
-      parsedFilters.limit = limit;
+    // 1. Parse the plain English string
+    const parsedFilters = this.profilesService.parseNaturalLanguage(query.q);
+    
+    // 2. Safely attach pagination (letting the service handle validations)
+    if (query.page !== undefined) parsedFilters.page = query.page;
+    if (query.limit !== undefined) parsedFilters.limit = query.limit;
 
-      // 3. Re-use the existing high-performance query builder
-      return await this.profilesService.getFilteredProfiles(parsedFilters);
-      
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new HttpException({ status: 'error', message: 'Server failure' }, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
+    // 3. Return the results
+    return this.profilesService.getFilteredProfiles(parsedFilters);
   }
 }
