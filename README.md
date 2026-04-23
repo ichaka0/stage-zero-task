@@ -22,7 +22,22 @@ json
     "processed_at": "2026-04-16T12:00:00Z"
   }
 }
+## Natural Language Parsing Approach
+The `/api/profiles/search` endpoint utilizes a rule-based Regex parsing engine to translate human-readable string queries into structured SQL `WHERE` clauses without the overhead of an LLM.
 
+**How it works:**
+1. **Sanitization:** The input string is normalized to lowercase to ensure case-insensitive matching.
+2. **Token Extraction via RegEx:** The engine scans for specific syntax patterns:
+   - **Gender:** Matches exact whole words (`\b(male|males|female...)\b`). It includes a cancellation check (if a query says "male and female", it drops the gender filter entirely to match both).
+   - **Age Groups:** Matches lifecycle keywords (`teenagers`, `adults`) mapping to their respective `age_group` strings.
+   - **Static Modifiers:** The keyword `young` translates into bounding logic: `min_age=16` and `max_age=24`.
+   - **Relational Age Modifiers:** Captures numbers following comparative operators (e.g., `above (\d+)`, `under (\d+)`) to dynamically generate `min_age` and `max_age`.
+   - **Geographic Data:** Extracts strings matching specific country names mapped to a static dictionary for ISO codes.
+
+**Limitations and Edge Cases Left Out:**
+- **Compound Modifiers:** The parser handles intersections (AND logic). Complex union queries (OR logic) are not supported.
+- **Typo Tolerance:** As a strict rule-based regex engine, it lacks fuzzy matching. "Nigera" will fail to parse and return an "Unable to interpret query" error.
+- **Extensive Geographic Mapping:** The country resolution relies on a hardcoded mapping dictionary limited to known seed database countries.
 Confidence Logic:
 is_confident is true only if probability >= 0.7 AND sample_size >= 100.
 Error Handling:
