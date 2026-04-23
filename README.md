@@ -1,25 +1,50 @@
-Stage 0 Task: Name Classifier API
-A NestJS-based REST API that integrates with the Genderize.io API to predict the gender of a name, calculate confidence scores based on sample data, and return a structured JSON response.
-Features
-External API Integration: Connects with the Genderize.io API.
-Data Transformation: Renames fields and adds custom logic (is_confident).
-Standardized Errors: Handles missing parameters, invalid types, and empty API results.
-CORS Enabled: Configured to allow all origins (*) for grading.
-Performance: Built with NestJS for high availability and low latency.
-API Specification
-1. Classify Name
-Endpoint: GET /api/classify?name={name}
-Success Response (200 OK):
-json
+# Stage 2 Profile Search API
+
+NestJS API for creating, storing, filtering, sorting, paginating, and searching inferred name profiles.
+
+## Base URL
+
+`https://stage-zero-task-gamma.vercel.app`
+
+## Features
+
+- Creates profiles from `Genderize`, `Agify`, and `Nationalize`
+- Stores inferred demographics in Postgres
+- Supports filtering by gender, age range, age group, and country
+- Supports sorting by `age`, `created_at`, and `gender_probability`
+- Supports capped pagination with a structured pagination envelope
+- Supports natural-language queries through `/api/profiles/search`
+
+## Endpoints
+
+### `POST /api/profiles`
+
+Creates a profile from a name.
+
+Request body:
+
+```json
+{
+  "name": "Ada"
+}
+```
+
+Success response:
+
+```json
 {
   "status": "success",
   "data": {
-    "name": "john",
-    "gender": "male",
-    "probability": 0.99,
-    "sample_size": 1234,
-    "is_confident": true,
-    "processed_at": "2026-04-16T12:00:00Z"
+    "id": "018f84d7-3d67-7b42-8e46-6a33e8b98690",
+    "name": "ada",
+    "gender": "female",
+    "gender_probability": 0.98,
+    "sample_size": 12345,
+    "age": 31,
+    "age_group": "adult",
+    "country_id": "NG",
+    "country_probability": 0.77,
+    "created_at": "2026-04-23T12:00:00.000Z"
   }
 }
 ## Natural Language Parsing Approach
@@ -37,39 +62,99 @@ The `/api/profiles/search` endpoint utilizes a rule-based Regex parsing engine t
 **Limitations and Edge Cases Left Out:**
 - **Compound Modifiers:** The parser handles intersections (AND logic). Complex union queries (OR logic) are not supported.
 - **Typo Tolerance:** As a strict rule-based regex engine, it lacks fuzzy matching. "Nigera" will fail to parse and return an "Unable to interpret query" error.
-- **Extensive Geographic Mapping:** The country resolution relies on a hardcoded mapping dictionary limited to known seed database countries.
-Confidence Logic:
-is_confident is true only if probability >= 0.7 AND sample_size >= 100.
-Error Handling:
-400 Bad Request: Missing name parameter.
-422 Unprocessable Entity: name is not a string.
-404 Not Found: Returned if the API has no data for the name.
-500/502: Upstream failure.
+- **Extensive Geographic Mapping:** The country resolution relies on a hardcoded mapping dictionary limited to known seed database countries.```
 
-Setup Instructions
-Prerequisites
-Node.js (v18 or higher)
-npm or yarn
-Installation
-bash
-# Clone the repository
-git clone git@github.com:jalopy01/stage-zero-task.git
+### `GET /api/profiles`
 
-# Install dependencies
+Returns stored profiles with filtering, sorting, and pagination.
+
+Supported query params:
+
+- `gender=male|female`
+- `age_group=child|teenager|adult|senior`
+- `country_id=NG`
+- `min_age=18`
+- `max_age=35`
+- `min_gender_probability=0.7`
+- `min_country_probability=0.2`
+- `sort_by=age|created_at|gender_probability`
+- `order=asc|desc`
+- `page=1`
+- `limit=10`
+
+Example:
+
+`/api/profiles?gender=female&country_id=NG&sort_by=age&order=desc&page=1&limit=5`
+
+Response shape:
+
+```json
+{
+  "status": "success",
+  "data": [],
+  "page": 1,
+  "limit": 5,
+  "total": 12,
+  "count": 5,
+  "pagination": {
+    "page": 1,
+    "limit": 5,
+    "total": 12,
+    "total_pages": 3,
+    "has_next_page": true,
+    "has_previous_page": false
+  }
+}
+```
+
+Notes:
+
+- `limit` is capped at `50`
+- Invalid `sort_by` or malformed numeric filters return `400`
+
+### `GET /api/profiles/search`
+
+Runs a natural-language search and returns the same response shape as `GET /api/profiles`.
+
+Supported examples:
+
+- `/api/profiles/search?q=young males&limit=50`
+- `/api/profiles/search?q=females above 30&limit=50`
+- `/api/profiles/search?q=people from nigeria&limit=50`
+- `/api/profiles/search?q=adult males from kenya&limit=50`
+- `/api/profiles/search?q=male and female teenagers above 17&limit=50`
+
+If the query cannot be interpreted, the API returns:
+
+```json
+{
+  "status": "error",
+  "message": "Unable to interpret query"
+}
+```
+
+### `GET /api/profiles/:id`
+
+Fetches a single stored profile by id.
+
+### `DELETE /api/profiles/:id`
+
+Deletes a stored profile by id.
+
+## Local Setup
+
+```bash
 npm install
-Running the App
-bash
-# development
-npm run start
-
-# watch mode
+npm run build
 npm run start:dev
+```
 
-# production mode
-npm run start:prod
+Required environment variable:
 
-Technologies Used
-Framework: NestJS (TypeScript)
-HTTP Client: Axios
-Deployment: https://stage-zero-task-gamma.vercel.app/api/classify?name=john
-Author: Nnubia Obinna
+- `DB_URL`
+
+## Deployment
+
+Production deployment:
+
+`https://stage-zero-task-gamma.vercel.app`

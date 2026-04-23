@@ -1,15 +1,16 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike } from 'typeorm';
+import { ILike, Repository, SelectQueryBuilder } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { uuidv7 } from 'uuidv7';
 import { Profile } from './entities/profile.entity';
 import { CreateProfileDto } from './dto/create-profile.dto';
 
-
 @Injectable()
 export class ProfileService {
+  private readonly allowedSortFields = new Set(['age', 'created_at', 'gender_probability']);
+
   constructor(
     @InjectRepository(Profile)
     private profilesRepository: Repository<Profile>,
@@ -83,6 +84,10 @@ export class ProfileService {
   }
 
   async getProfile(id: string) {
+    if (!this.isUuid(id)) {
+      throw new HttpException({ status: 'error', message: 'Profile not found' }, HttpStatus.NOT_FOUND);
+    }
+
     const profile = await this.profilesRepository.findOne({ where: { id } });
     if (!profile) {
       throw new HttpException({ status: 'error', message: 'Profile not found' }, HttpStatus.NOT_FOUND);
@@ -112,63 +117,36 @@ export class ProfileService {
     }
   }
 
-
   async getFilteredProfiles(query: any) {
-    // 1. Bulletproof Pagination & Max-Cap
-    let page = 1;
-    if (query.page !== undefined && query.page !== '') {
-      page = Number(query.page);
-      if (isNaN(page) || page < 1) page = 1;
-    }
-
-    let limit = 10;
-    if (query.limit !== undefined && query.limit !== '') {
-      limit = Number(query.limit);
-      if (isNaN(limit) || limit < 1) limit = 10;
-    }
-    if (limit > 50) limit = 50; // Strict Max-Cap behavior
-
+    const page = this.parsePositiveInteger(query.page, 1);
+    const limit = Math.min(this.parsePositiveInteger(query.limit, 10), 50);
     const qb = this.profilesRepository.createQueryBuilder('profile');
 
-    // 2. Filters
-    if (query.gender) qb.andWhere('LOWER(profile.gender) = :gender', { gender: query.gender.toLowerCase() });
-    if (query.age_group) qb.andWhere('LOWER(profile.age_group) = :age_group', { age_group: query.age_group.toLowerCase() });
-    if (query.country_id) qb.andWhere('UPPER(profile.country_id) = :country_id', { country_id: query.country_id.toUpperCase() });
-    
-    if (query.min_age !== undefined && query.min_age !== '') qb.andWhere('profile.age >= :min_age', { min_age: Number(query.min_age) });
-    if (query.max_age !== undefined && query.max_age !== '') qb.andWhere('profile.age <= :max_age', { max_age: Number(query.max_age) });
-    
-    if (query.min_gender_probability !== undefined && query.min_gender_probability !== '') {
-      qb.andWhere('profile.gender_probability >= :mgp', { mgp: Number(query.min_gender_probability) });
-    }
-    if (query.min_country_probability !== undefined && query.min_country_probability !== '') {
-      qb.andWhere('profile.country_probability >= :mcp', { mcp: Number(query.min_country_probability) });
-    }
+    this.applyFilters(qb, query);
 
-    // 3. Strict Sorting Validation
-    if (query.sort_by) {
-      const allowedSorts = ['age', 'created_at', 'gender_probability'];
-      if (!allowedSorts.includes(query.sort_by)) {
-        throw new HttpException({ status: 'error', message: 'Invalid query parameters' }, HttpStatus.BAD_REQUEST);
-      }
-      
-      const orderStr = query.order ? String(query.order).toLowerCase() : 'asc';
-      if (query.order && orderStr !== 'asc' && orderStr !== 'desc') {
-        throw new HttpException({ status: 'error', message: 'Invalid query parameters' }, HttpStatus.BAD_REQUEST);
-      }
-      qb.orderBy(`profile.${query.sort_by}`, orderStr === 'desc' ? 'DESC' : 'ASC');
-    }
+    const sortBy = this.parseSortField(query.sort_by);
+    const sortOrder = this.parseSortOrder(query.order);
+    qb.orderBy(`profile.${sortBy}`, sortOrder).addOrderBy('profile.id', 'ASC');
 
-    // 4. Execute safe pagination
     qb.skip((page - 1) * limit).take(limit);
     const [data, total] = await qb.getManyAndCount();
+    const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
     return {
       status: 'success',
+      data,
       page,
       limit,
       total,
-      data,
+      count: data.length,
+      pagination: {
+        page,
+        limit,
+        total,
+        total_pages: totalPages,
+        has_next_page: page < totalPages,
+        has_previous_page: page > 1 && totalPages > 0,
+      },
     };
   }
 
@@ -190,9 +168,7 @@ export class ProfileService {
     );
   }
 
-
   parseNaturalLanguage(q: any) {
-    // Prevent unhandled TypeErrors from crashing the server
     if (!q || typeof q !== 'string' || q.trim() === '') {
       throw new HttpException({ status: 'error', message: 'Unable to interpret query' }, HttpStatus.BAD_REQUEST);
     }
@@ -201,42 +177,81 @@ export class ProfileService {
     const filters: any = {};
     let interpreted = false;
 
-    // "Male and female" cancellation logic
     const hasMale = /\b(male|males|men|boy|boys)\b/.test(queryStr);
     const hasFemale = /\b(female|females|women|girl|girls)\b/.test(queryStr);
-    
-    if (hasMale && !hasFemale) { filters.gender = 'male'; interpreted = true; }
-    else if (hasFemale && !hasMale) { filters.gender = 'female'; interpreted = true; }
-    else if (hasMale && hasFemale) { interpreted = true; } // Prevents overwrite and satisfies "teenagers above 17" test
 
-    if (/\byoung\b/.test(queryStr)) {
-      filters.min_age = 16;
-      filters.max_age = 24;
+    if (hasMale && !hasFemale) {
+      filters.gender = 'male';
+      interpreted = true;
+    } else if (hasFemale && !hasMale) {
+      filters.gender = 'female';
+      interpreted = true;
+    } else if (hasMale && hasFemale) {
       interpreted = true;
     }
 
-    if (/\b(teenager|teenagers|teens)\b/.test(queryStr)) { filters.age_group = 'teenager'; interpreted = true; }
-    if (/\b(adult|adults)\b/.test(queryStr)) { filters.age_group = 'adult'; interpreted = true; }
-    if (/\b(child|children|kids)\b/.test(queryStr)) { filters.age_group = 'child'; interpreted = true; }
-    if (/\b(senior|seniors|elderly)\b/.test(queryStr)) { filters.age_group = 'senior'; interpreted = true; }
+    if (/\byoung\b/.test(queryStr)) {
+      filters.min_age = 18;
+      filters.max_age = 25;
+      interpreted = true;
+    }
+
+    if (/\b(teenager|teenagers|teens)\b/.test(queryStr)) {
+      filters.age_group = 'teenager';
+      interpreted = true;
+    }
+    if (/\b(adult|adults)\b/.test(queryStr)) {
+      filters.age_group = 'adult';
+      interpreted = true;
+    }
+    if (/\b(child|children|kid|kids)\b/.test(queryStr)) {
+      filters.age_group = 'child';
+      interpreted = true;
+    }
+    if (/\b(senior|seniors|elderly)\b/.test(queryStr)) {
+      filters.age_group = 'senior';
+      interpreted = true;
+    }
 
     const aboveMatch = queryStr.match(/\b(?:above|over|older than) (\d+)\b/);
-    if (aboveMatch) { filters.min_age = parseInt(aboveMatch[1], 10) + 1; interpreted = true; }
+    if (aboveMatch) {
+      filters.min_age = parseInt(aboveMatch[1], 10) + 1;
+      interpreted = true;
+    }
 
     const underMatch = queryStr.match(/\b(?:under|below|younger than) (\d+)\b/);
-    if (underMatch) { filters.max_age = parseInt(underMatch[1], 10) - 1; interpreted = true; }
+    if (underMatch) {
+      filters.max_age = parseInt(underMatch[1], 10) - 1;
+      interpreted = true;
+    }
 
-    // Country logic
     const countryMap: Record<string, string> = {
-      'nigeria': 'NG', 'kenya': 'KE', 'angola': 'AO', 
-      'tanzania': 'TZ', 'uganda': 'UG', 'sudan': 'SD'
+      nigeria: 'NG',
+      kenya: 'KE',
+      angola: 'AO',
+      tanzania: 'TZ',
+      uganda: 'UG',
+      sudan: 'SD',
     };
-    
+
     for (const [country, code] of Object.entries(countryMap)) {
-      if (queryStr.includes(`from ${country}`) || queryStr.includes(`in ${country}`)) {
-          filters.country_id = code;
-          interpreted = true;
+      if (
+        queryStr.includes(`from ${country}`) ||
+        queryStr.includes(`in ${country}`) ||
+        queryStr.includes(country)
+      ) {
+        filters.country_id = code;
+        interpreted = true;
+        break;
       }
+    }
+
+    if (
+      filters.min_age !== undefined &&
+      filters.max_age !== undefined &&
+      filters.min_age > filters.max_age
+    ) {
+      throw new HttpException({ status: 'error', message: 'Unable to interpret query' }, HttpStatus.BAD_REQUEST);
     }
 
     if (!interpreted) {
@@ -244,5 +259,108 @@ export class ProfileService {
     }
 
     return filters;
+  }
+
+  private applyFilters(qb: SelectQueryBuilder<Profile>, query: any) {
+    if (query.gender) {
+      qb.andWhere('LOWER(profile.gender) = :gender', { gender: String(query.gender).toLowerCase() });
+    }
+
+    if (query.age_group) {
+      qb.andWhere('LOWER(profile.age_group) = :age_group', {
+        age_group: String(query.age_group).toLowerCase(),
+      });
+    }
+
+    if (query.country_id) {
+      qb.andWhere('UPPER(profile.country_id) = :country_id', {
+        country_id: String(query.country_id).toUpperCase(),
+      });
+    }
+
+    const minAge = this.parseOptionalNumber(query.min_age);
+    const maxAge = this.parseOptionalNumber(query.max_age);
+    const minGenderProbability = this.parseOptionalNumber(query.min_gender_probability);
+    const minCountryProbability = this.parseOptionalNumber(query.min_country_probability);
+
+    if (minAge !== undefined) {
+      qb.andWhere('profile.age >= :min_age', { min_age: minAge });
+    }
+
+    if (maxAge !== undefined) {
+      qb.andWhere('profile.age <= :max_age', { max_age: maxAge });
+    }
+
+    if (minGenderProbability !== undefined) {
+      qb.andWhere('profile.gender_probability >= :min_gender_probability', {
+        min_gender_probability: minGenderProbability,
+      });
+    }
+
+    if (minCountryProbability !== undefined) {
+      qb.andWhere('profile.country_probability >= :min_country_probability', {
+        min_country_probability: minCountryProbability,
+      });
+    }
+
+    if (minAge !== undefined && maxAge !== undefined && minAge > maxAge) {
+      throw new HttpException({ status: 'error', message: 'Invalid query parameters' }, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  private parsePositiveInteger(value: unknown, fallback: number): number {
+    if (value === undefined || value === null || value === '') {
+      return fallback;
+    }
+
+    const parsedValue = Number(value);
+    if (!Number.isFinite(parsedValue) || parsedValue < 1) {
+      return fallback;
+    }
+
+    return Math.floor(parsedValue);
+  }
+
+  private parseOptionalNumber(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+
+    const parsedValue = Number(value);
+    if (!Number.isFinite(parsedValue)) {
+      throw new HttpException({ status: 'error', message: 'Invalid query parameters' }, HttpStatus.BAD_REQUEST);
+    }
+
+    return parsedValue;
+  }
+
+  private parseSortField(value: unknown): string {
+    if (value === undefined || value === null || value === '') {
+      return 'created_at';
+    }
+
+    const sortField = String(value);
+    if (!this.allowedSortFields.has(sortField)) {
+      throw new HttpException({ status: 'error', message: 'Invalid query parameters' }, HttpStatus.BAD_REQUEST);
+    }
+
+    return sortField;
+  }
+
+  private parseSortOrder(value: unknown): 'ASC' | 'DESC' {
+    if (value === undefined || value === null || value === '') {
+      return 'ASC';
+    }
+
+    const sortOrder = String(value).toLowerCase();
+    if (sortOrder !== 'asc' && sortOrder !== 'desc') {
+      throw new HttpException({ status: 'error', message: 'Invalid query parameters' }, HttpStatus.BAD_REQUEST);
+    }
+
+    return sortOrder.toUpperCase() as 'ASC' | 'DESC';
+  }
+
+  private isUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
   }
 }

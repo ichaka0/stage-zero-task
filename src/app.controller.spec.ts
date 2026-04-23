@@ -5,18 +5,31 @@ import { AppService } from './app.service';
 describe('AppController', () => {
   let appController: AppController;
 
+  const mockAppService = {
+    classifyName: jest.fn(),
+  };
+
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService],
+      providers: [
+        {
+          provide: AppService,
+          useValue: mockAppService,
+        },
+      ],
     }).compile();
 
     appController = app.get<AppController>(AppController);
   });
 
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
-    });
+  it('delegates valid classification requests to the service', async () => {
+    const response = { status: 'success', data: { name: 'john' } };
+    mockAppService.classifyName.mockResolvedValue(response);
+
+    await expect(appController.classifyName('john')).resolves.toBe(response);
+    expect(mockAppService.classifyName).toHaveBeenCalledWith('john');
   });
 });

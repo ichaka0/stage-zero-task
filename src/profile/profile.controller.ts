@@ -1,8 +1,18 @@
-import { Controller, Post, Get, Delete, Body, Param, Query, Res, HttpStatus, HttpException } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpException,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { ProfileService } from './profile.service';
 import { CreateProfileDto } from './dto/create-profile.dto';
-
 
 @Controller('api/profiles')
 export class ProfileController {
@@ -34,6 +44,32 @@ export class ProfileController {
     }
   }
 
+  @Get()
+  async findAll(@Query() query: any) {
+    return this.profilesService.getFilteredProfiles(query);
+  }
+
+  @Get('filtered')
+  async getAll(@Query() query: any) {
+    return this.profilesService.getFilteredProfiles(query);
+  }
+
+  @Get('search')
+  async searchByNLP(@Query() query: any) {
+    if (!query.q) {
+      throw new HttpException({ status: 'error', message: 'Missing or empty parameter' }, HttpStatus.BAD_REQUEST);
+    }
+
+    const parsedFilters = this.profilesService.parseNaturalLanguage(query.q);
+
+    if (query.page !== undefined) parsedFilters.page = query.page;
+    if (query.limit !== undefined) parsedFilters.limit = query.limit;
+    if (query.sort_by !== undefined) parsedFilters.sort_by = query.sort_by;
+    if (query.order !== undefined) parsedFilters.order = query.order;
+
+    return this.profilesService.getFilteredProfiles(parsedFilters);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     const profile = await this.profilesService.getProfile(id);
@@ -43,69 +79,9 @@ export class ProfileController {
     };
   }
 
-  @Get()
-  async findAll(@Query() query: any) {
-    const result = await this.profilesService.getAllProfiles({
-      gender: query.gender,
-      country_id: query.country_id,
-      age_group: query.age_group,
-    });
-
-    return {
-      status: 'success',
-      count: result.count,
-      data: result.profiles,
-    };
-  }
-
   @Delete(':id')
   async remove(@Param('id') id: string, @Res() res: Response) {
     await this.profilesService.deleteProfile(id);
     return res.status(HttpStatus.NO_CONTENT).send();
-  }
-
-  @Get('filtered')
-  async getAll(@Query() query: any) {
-    return this.profilesService.getFilteredProfiles(query);
-  }
-
-  // @Get('search')
-  // async searchByNLP(@Query('q') q: string, @Query('page') page: string, @Query('limit') limit: string) {
-  //   if (!q) {
-  //     throw new HttpException({ status: 'error', message: 'Missing or empty parameter' }, HttpStatus.BAD_REQUEST);
-  //   }
-
-  //   try {
-  //     // 1. Parse the plain English string into a structured query object
-  //     const parsedFilters = this.profilesService.parseNaturalLanguage(q);
-      
-  //     // 2. Attach pagination
-  //     parsedFilters.page = page;
-  //     parsedFilters.limit = limit;
-
-  //     // 3. Re-use the existing high-performance query builder
-  //     return await this.profilesService.getFilteredProfiles(parsedFilters);
-      
-  //   } catch (error) {
-  //     if (error instanceof HttpException) throw error;
-  //     throw new HttpException({ status: 'error', message: 'Server failure' }, HttpStatus.INTERNAL_SERVER_ERROR);
-  //   }
-  // }
-
-  @Get('search')
-  async searchByNLP(@Query() query: any) {
-    if (!query.q) {
-      throw new HttpException({ status: 'error', message: 'Missing or empty parameter' }, HttpStatus.BAD_REQUEST);
-    }
-
-    // 1. Parse the plain English string
-    const parsedFilters = this.profilesService.parseNaturalLanguage(query.q);
-    
-    // 2. Safely attach pagination (letting the service handle validations)
-    if (query.page !== undefined) parsedFilters.page = query.page;
-    if (query.limit !== undefined) parsedFilters.limit = query.limit;
-
-    // 3. Return the results
-    return this.profilesService.getFilteredProfiles(parsedFilters);
   }
 }
