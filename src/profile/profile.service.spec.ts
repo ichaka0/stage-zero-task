@@ -61,11 +61,20 @@ describe('ProfileService', () => {
     expect(mockQueryBuilder.take).toHaveBeenCalledWith(50);
     expect(result.pagination).toEqual({
       page: 2,
+      current_page: 2,
       limit: 50,
+      per_page: 50,
       total: 61,
+      total_count: 61,
+      count: 1,
       total_pages: 2,
+      totalPages: 2,
       has_next_page: false,
+      hasNextPage: false,
       has_previous_page: true,
+      hasPreviousPage: true,
+      next_page: null,
+      previous_page: 1,
     });
   });
 
@@ -79,8 +88,24 @@ describe('ProfileService', () => {
   it('parses an adult males from kenya query', () => {
     expect(service.parseNaturalLanguage('adult males from kenya')).toEqual({
       gender: 'male',
-      age_group: 'adult',
+      min_age: 18,
+      max_age: 59,
       country_id: 'KE',
+    });
+  });
+
+  it('parses young males as a numeric age range', () => {
+    expect(service.parseNaturalLanguage('young males')).toEqual({
+      gender: 'male',
+      min_age: 13,
+      max_age: 25,
+    });
+  });
+
+  it('parses male and female teenagers above 17 without adding a gender filter', () => {
+    expect(service.parseNaturalLanguage('Male and female teenagers above 17')).toEqual({
+      min_age: 18,
+      max_age: 19,
     });
   });
 

@@ -131,6 +131,8 @@ export class ProfileService {
     qb.skip((page - 1) * limit).take(limit);
     const [data, total] = await qb.getManyAndCount();
     const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+    const nextPage = page < totalPages ? page + 1 : null;
+    const previousPage = page > 1 && totalPages > 0 ? page - 1 : null;
 
     return {
       status: 'success',
@@ -141,11 +143,20 @@ export class ProfileService {
       count: data.length,
       pagination: {
         page,
+        current_page: page,
         limit,
+        per_page: limit,
         total,
+        total_count: total,
+        count: data.length,
         total_pages: totalPages,
+        totalPages,
         has_next_page: page < totalPages,
+        hasNextPage: page < totalPages,
         has_previous_page: page > 1 && totalPages > 0,
+        hasPreviousPage: page > 1 && totalPages > 0,
+        next_page: nextPage,
+        previous_page: previousPage,
       },
     };
   }
@@ -191,25 +202,27 @@ export class ProfileService {
     }
 
     if (/\byoung\b/.test(queryStr)) {
-      filters.min_age = 18;
+      filters.min_age = 13;
       filters.max_age = 25;
       interpreted = true;
     }
 
     if (/\b(teenager|teenagers|teens)\b/.test(queryStr)) {
-      filters.age_group = 'teenager';
+      filters.min_age = 13;
+      filters.max_age = 19;
       interpreted = true;
     }
     if (/\b(adult|adults)\b/.test(queryStr)) {
-      filters.age_group = 'adult';
+      filters.min_age = 18;
+      filters.max_age = 59;
       interpreted = true;
     }
     if (/\b(child|children|kid|kids)\b/.test(queryStr)) {
-      filters.age_group = 'child';
+      filters.max_age = 12;
       interpreted = true;
     }
     if (/\b(senior|seniors|elderly)\b/.test(queryStr)) {
-      filters.age_group = 'senior';
+      filters.min_age = 60;
       interpreted = true;
     }
 
