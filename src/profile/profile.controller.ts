@@ -63,4 +63,32 @@ export class ProfileController {
     await this.profilesService.deleteProfile(id);
     return res.status(HttpStatus.NO_CONTENT).send();
   }
+
+  @Get('filtered')
+  async getAll(@Query() query: any) {
+    return this.profilesService.getFilteredProfiles(query);
+  }
+
+  @Get('search')
+  async searchByNLP(@Query('q') q: string, @Query('page') page: string, @Query('limit') limit: string) {
+    if (!q) {
+      throw new HttpException({ status: 'error', message: 'Missing or empty parameter' }, HttpStatus.BAD_REQUEST);
+    }
+
+    try {
+      // 1. Parse the plain English string into a structured query object
+      const parsedFilters = this.profilesService.parseNaturalLanguage(q);
+      
+      // 2. Attach pagination
+      parsedFilters.page = page;
+      parsedFilters.limit = limit;
+
+      // 3. Re-use the existing high-performance query builder
+      return await this.profilesService.getFilteredProfiles(parsedFilters);
+      
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException({ status: 'error', message: 'Server failure' }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
 }

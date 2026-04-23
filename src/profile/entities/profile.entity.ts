@@ -26,6 +26,9 @@ export class Profile {
   @Column()
   country_id: string;
 
+  @Column({nullable:true})
+  country_name: string;
+
   @Column('float')
   country_probability: number;
 

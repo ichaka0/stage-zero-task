@@ -1,0 +1,42 @@
+ {
+  "profiles": [
+    {
+      "name": "Awino Hassan",
+      "gender": "female",
+      "gender_probability": 0.66,
+      "age": 68,
+      "age_group": "senior",
+      "country_id": "TZ",
+      "country_name": "Tanzania",
+      "country_probability": 0.6
+    },
+    {
+      "name": "Mercy Agyei",
+      "gender": "female",
+      "gender_probability": 0.79,
+      "age": 9,
+      "age_group": "child",
+      "country_id": "NG",
+      "country_name": "Nigeria",
+      "country_probability": 0.11
+    },
+    {
+      "name": "Hassan Girma",
+      "gender": "male",
+      "gender_probability": 0.85,
+      "age": 37,
+      "age_group": "adult",
+      "country_id": "UG",
+      "country_name": "Uganda",
+      "country_probability": 0.38
+    },
+    {
+      "name": "Nabil Saidi",
+      "gender": "male",
+      "gender_probability": 0.8,
+      "age": 80,
+      "age_group": "senior",
+      "country_id": "SD",
+      "country_name": "Sudan",
+      "country_probability": 0.49
+    }]}
