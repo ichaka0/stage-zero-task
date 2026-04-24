@@ -119,7 +119,7 @@ export class ProfileService {
 
   async getFilteredProfiles(query: any) {
     const page = this.parsePositiveInteger(query.page, 1);
-    const limit = Math.min(this.parsePositiveInteger(query.limit, 10), 50);
+    const limit = Math.min(this.parsePositiveInteger(query.limit, 5), 50);
     const qb = this.profilesRepository.createQueryBuilder('profile');
 
     this.applyFilters(qb, query);
