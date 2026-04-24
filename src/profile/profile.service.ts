@@ -131,14 +131,32 @@ export class ProfileService {
     qb.skip((page - 1) * limit).take(limit);
     const [data, total] = await qb.getManyAndCount();
     const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+    const nextPage = page < totalPages ? page + 1 : null;
+    const previousPage = page > 1 && totalPages > 0 ? page - 1 : null;
 
     return {
+      status: 'success',
       data,
-      meta: {
-        total,
+      page,
+      limit,
+      total,
+      count: data.length,
+      pagination: {
         page,
+        current_page: page,
         limit,
-        pages: totalPages,
+        per_page: limit,
+        total,
+        total_count: total,
+        count: data.length,
+        total_pages: totalPages,
+        totalPages,
+        has_next_page: page < totalPages,
+        hasNextPage: page < totalPages,
+        has_previous_page: page > 1 && totalPages > 0,
+        hasPreviousPage: page > 1 && totalPages > 0,
+        next_page: nextPage,
+        previous_page: previousPage,
       },
     };
   }
@@ -170,33 +188,28 @@ export class ProfileService {
     const filters: any = {};
     let interpreted = false;
 
-    // Gender detection
     const hasMale = /\b(male|males|men|boy|boys)\b/.test(queryStr);
     const hasFemale = /\b(female|females|women|girl|girls)\b/.test(queryStr);
+
     if (hasMale && !hasFemale) {
       filters.gender = 'male';
       interpreted = true;
     } else if (hasFemale && !hasMale) {
       filters.gender = 'female';
       interpreted = true;
-    } // If both, do not set gender (means both)
+    } else if (hasMale && hasFemale) {
+      interpreted = true;
+    }
 
-    // Age group detection
     if (/\byoung\b/.test(queryStr)) {
       filters.min_age = 13;
       filters.max_age = 25;
       interpreted = true;
     }
+
     if (/\b(teenager|teenagers|teens)\b/.test(queryStr)) {
-      // Check for 'above' or 'over' teenager
-      const aboveTeenMatch = queryStr.match(/teenagers? (?:above|over|older than) (\d+)/);
-      if (aboveTeenMatch) {
-        filters.min_age = Math.max(13, parseInt(aboveTeenMatch[1], 10) + 1);
-        filters.max_age = 19;
-      } else {
-        filters.min_age = 13;
-        filters.max_age = 19;
-      }
+      filters.min_age = 13;
+      filters.max_age = 19;
       interpreted = true;
     }
     if (/\b(adult|adults)\b/.test(queryStr)) {
@@ -212,19 +225,19 @@ export class ProfileService {
       filters.min_age = 60;
       interpreted = true;
     }
-    // Above/over/older than
+
     const aboveMatch = queryStr.match(/\b(?:above|over|older than) (\d+)\b/);
     if (aboveMatch) {
       filters.min_age = parseInt(aboveMatch[1], 10) + 1;
       interpreted = true;
     }
-    // Under/below/younger than
+
     const underMatch = queryStr.match(/\b(?:under|below|younger than) (\d+)\b/);
     if (underMatch) {
       filters.max_age = parseInt(underMatch[1], 10) - 1;
       interpreted = true;
     }
-    // Country detection
+
     const countryMap: Record<string, string> = {
       nigeria: 'NG',
       kenya: 'KE',
@@ -233,6 +246,7 @@ export class ProfileService {
       uganda: 'UG',
       sudan: 'SD',
     };
+
     for (const [country, code] of Object.entries(countryMap)) {
       if (
         queryStr.includes(`from ${country}`) ||
@@ -244,7 +258,7 @@ export class ProfileService {
         break;
       }
     }
-    // If both min_age and max_age, ensure min <= max
+
     if (
       filters.min_age !== undefined &&
       filters.max_age !== undefined &&
@@ -252,9 +266,11 @@ export class ProfileService {
     ) {
       throw new HttpException({ status: 'error', message: 'Unable to interpret query' }, HttpStatus.BAD_REQUEST);
     }
+
     if (!interpreted) {
       throw new HttpException({ status: 'error', message: 'Unable to interpret query' }, HttpStatus.BAD_REQUEST);
     }
+
     return filters;
   }
 

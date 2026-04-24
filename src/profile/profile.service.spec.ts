@@ -59,11 +59,22 @@ describe('ProfileService', () => {
 
     expect(mockQueryBuilder.skip).toHaveBeenCalledWith(50);
     expect(mockQueryBuilder.take).toHaveBeenCalledWith(50);
-    expect(result.meta).toEqual({
+    expect(result.pagination).toEqual({
       page: 2,
+      current_page: 2,
       limit: 50,
+      per_page: 50,
       total: 61,
-      pages: 2,
+      total_count: 61,
+      count: 1,
+      total_pages: 2,
+      totalPages: 2,
+      has_next_page: false,
+      hasNextPage: false,
+      has_previous_page: true,
+      hasPreviousPage: true,
+      next_page: null,
+      previous_page: 1,
     });
   });
 
