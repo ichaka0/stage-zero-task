@@ -15,7 +15,7 @@ export class ProfileService {
     @InjectRepository(Profile)
     private profilesRepository: Repository<Profile>,
     private httpService: HttpService,
-  ) {}
+  ) { }
 
   async createProfile(dto: CreateProfileDto) {
     const formattedName = dto.name.trim().toLowerCase();
@@ -72,7 +72,7 @@ export class ProfileService {
       age_group: age_group,
       country_id: highestProbCountry.country_id,
       country_probability: highestProbCountry.probability,
-      created_at: new Date(), 
+      created_at: new Date(),
     });
 
     await this.profilesRepository.save(newProfile);
@@ -97,7 +97,7 @@ export class ProfileService {
 
   async getAllProfiles(query: { gender?: string; country_id?: string; age_group?: string }) {
     const whereClause: any = {};
-    
+
     if (query.gender) whereClause.gender = ILike(query.gender);
     if (query.country_id) whereClause.country_id = ILike(query.country_id);
     if (query.age_group) whereClause.age_group = ILike(query.age_group);
@@ -140,24 +140,6 @@ export class ProfileService {
       page,
       limit,
       total,
-      count: data.length,
-      pagination: {
-        page,
-        current_page: page,
-        limit,
-        per_page: limit,
-        total,
-        total_count: total,
-        count: data.length,
-        total_pages: totalPages,
-        totalPages,
-        has_next_page: page < totalPages,
-        hasNextPage: page < totalPages,
-        has_previous_page: page > 1 && totalPages > 0,
-        hasPreviousPage: page > 1 && totalPages > 0,
-        next_page: nextPage,
-        previous_page: previousPage,
-      },
     };
   }
 
@@ -201,37 +183,49 @@ export class ProfileService {
       interpreted = true;
     }
 
+    // 1. Fix "young" range: 16–24 per spec (not 13–25)
     if (/\byoung\b/.test(queryStr)) {
-      filters.min_age = 13;
-      filters.max_age = 25;
+      filters.min_age = 16;
+      filters.max_age = 24;
       interpreted = true;
     }
 
+    // 2. Fix teenager — also set age_group
     if (/\b(teenager|teenagers|teens)\b/.test(queryStr)) {
+      filters.age_group = 'teenager';
       filters.min_age = 13;
       filters.max_age = 19;
       interpreted = true;
     }
+
+    // 3. Fix adult — also set age_group
     if (/\b(adult|adults)\b/.test(queryStr)) {
+      filters.age_group = 'adult';
       filters.min_age = 18;
       filters.max_age = 59;
       interpreted = true;
     }
+
+    // 4. Fix child — also set age_group
     if (/\b(child|children|kid|kids)\b/.test(queryStr)) {
+      filters.age_group = 'child';
       filters.max_age = 12;
       interpreted = true;
     }
+
+    // 5. Fix senior — also set age_group
     if (/\b(senior|seniors|elderly)\b/.test(queryStr)) {
+      filters.age_group = 'senior';
       filters.min_age = 60;
       interpreted = true;
     }
 
+    // 6. Fix "above X" — spec shows "above 30" → min_age=30, NOT 31
     const aboveMatch = queryStr.match(/\b(?:above|over|older than) (\d+)\b/);
     if (aboveMatch) {
-      filters.min_age = parseInt(aboveMatch[1], 10) + 1;
+      filters.min_age = parseInt(aboveMatch[1], 10); // removed the +1
       interpreted = true;
     }
-
     const underMatch = queryStr.match(/\b(?:under|below|younger than) (\d+)\b/);
     if (underMatch) {
       filters.max_age = parseInt(underMatch[1], 10) - 1;
